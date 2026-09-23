@@ -315,10 +315,10 @@ func interact(origin: Vector2, facing: Vector2) -> void:
 			if line.is_empty():
 				line = "There is nothing to read here."
 			talking = true
-			dialogue.show_message(line + "\n\n(Press Z or Enter)")
+			dialogue.show_message(line)
 			return
 	talking = true
-	dialogue.show_message("\nThere is nothing to interact with.\n\n(Press Z or Enter)")
+	dialogue.show_message("There is nothing to interact with.")
 
 func close_dialogue() -> void:
 	talking = false

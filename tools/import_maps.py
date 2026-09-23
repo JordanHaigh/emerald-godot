@@ -16,6 +16,7 @@ SOURCE = ROOT / "assets" / "source"
 OUT = ROOT / "assets"
 MAP_NAMES = ("LittlerootTown", "Route101", "OldaleTown", "Route103")
 SPECIES_NAMES = ("MUDKIP", "WURMPLE", "POOCHYENA", "ZIGZAGOON", "LOTAD", "SEEDOT", "RALTS", "WINGULL")
+MESSAGE_BOX_SOURCE = SOURCE / "ui" / "message_box.png"
 
 
 def read_indexed_png(path: Path) -> tuple[int, int, list[int], list[int]]:
@@ -118,6 +119,58 @@ def import_character_sprites() -> None:
     for source in (SOURCE / "people").glob("*.png"):
         import_character_sprite(source, out_dir / source.name)
     import_character_sprite(OUT / "brendan_walking.png", out_dir / "brendan_walking.png")
+
+
+def import_message_box() -> None:
+    """Rebuild Emerald's 30×6-tile field dialogue frame from its 14 source tiles."""
+    width, height, indices, opacity = read_indexed_png(MESSAGE_BOX_SOURCE)
+    palette = read_indexed_palette(MESSAGE_BOX_SOURCE)
+    if (width, height) != (56, 16):
+        raise ValueError(f"Expected a 56×16 dialogue tile sheet, got {width}×{height}")
+
+    # menu.c's WindowFunc_DrawDialogueFrame draws the frame around a 27×4-tile
+    # message window at tilemap (2, 15), yielding a 30×6-tile screen-wide box.
+    frame_width, frame_height = 30 * 8, 6 * 8
+    pixels = bytearray(frame_width * frame_height * 4)
+    # The window pixel buffer fills only the 27×4-tile interior. Keep the
+    # surrounding frame transparent so it composites over the field correctly.
+    for y in range(8, 40):
+        for x in range(16, 232):
+            i = (y * frame_width + x) * 4
+            pixels[i : i + 4] = bytes((*palette[1], 255))
+
+    def blit_tile(tile_id: int, tile_x: int, tile_y: int, flip_y: bool = False) -> None:
+        source_x, source_y = (tile_id % 7) * 8, (tile_id // 7) * 8
+        for dy in range(8):
+            sy = source_y + (7 - dy if flip_y else dy)
+            for dx in range(8):
+                si = sy * width + source_x + dx
+                color_index = indices[si]
+                if color_index == 0 or opacity[si] == 0:
+                    continue
+                color = palette[color_index]
+                di = ((tile_y * 8 + dy) * frame_width + tile_x * 8 + dx) * 4
+                pixels[di : di + 4] = bytes((*color, 255))
+
+    # The tile numbers and repeated spans match menu.c exactly. Tile 0 is the
+    # transparent/background palette entry and leaves the white window intact.
+    for x, tile in ((0, 1), (1, 3), (28, 5), (29, 6)):
+        blit_tile(tile, x, 0)
+    for x in range(2, 28):
+        blit_tile(4, x, 0)
+    for y in range(1, 6):
+        blit_tile(7, 0, y)
+        for x in range(1, 29):
+            blit_tile(9, x, y)
+        blit_tile(10, 29, y)
+    for x, tile in ((0, 1), (1, 3), (28, 5), (29, 6)):
+        blit_tile(tile, x, 5, flip_y=True)
+    for x in range(2, 28):
+        blit_tile(4, x, 5, flip_y=True)
+
+    output = OUT / "ui" / "field_message_box.png"
+    output.parent.mkdir(exist_ok=True)
+    write_png(output, frame_width, frame_height, pixels)
 
 
 def read_tileset(folder: Path) -> dict:
@@ -441,6 +494,7 @@ def main() -> None:
         import_map(name, layouts, primary, secondary, wild_data)
     import_forest_border(primary, secondary)
     import_character_sprites()
+    import_message_box()
     import_pokemon()
 
 
